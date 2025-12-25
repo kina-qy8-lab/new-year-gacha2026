@@ -216,6 +216,9 @@
                 
                 <p class="mb-6 font-bold text-xl text-amber-800">今年の運勢を占おう！</p>
                 
+                <!-- 管理者用メッセージ（管理者のみ表示） -->
+                <p id="adminTestMsg" class="hidden text-xs text-red-500 font-bold mb-2">※管理者テストモード：結果は保存されません</p>
+
                 <button id="drawBtn" class="w-full gold-gradient text-red-900 font-black text-xl py-4 rounded-xl shadow-lg border-b-4 border-amber-600 active:border-b-0 active:translate-y-1 transition-all">
                     福引きを回す
                 </button>
@@ -256,9 +259,14 @@
                     <!-- メッセージ -->
                 </p>
 
-                <div class="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                <div class="bg-amber-50 p-4 rounded-lg border border-amber-200 mb-4">
                     <p class="text-sm text-gray-600">今年もよろしくお願いします！</p>
                 </div>
+
+                <!-- 管理者用リプレイボタン -->
+                <button id="adminRetryBtn" class="hidden w-full bg-gray-200 text-gray-700 py-2 rounded hover:bg-gray-300">
+                    <i class="fas fa-redo"></i> もう一度引く（管理者のみ）
+                </button>
             </div>
 
              <!-- 6. 実施済み画面 -->
@@ -327,21 +335,19 @@
         import { getFirestore, doc, getDoc, setDoc, runTransaction, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
 
         // ★★★ 設定エリア ★★★
-        // 1. Firebase Config (ご自身のものに書き換えてください)
         const firebaseConfig = {
- 	  apiKey: "AIzaSyCi33rhnvJCGlIWXsesPk4dFNDLAf2w8cQ",
- 	  authDomain: "new-year-gacha2026.firebaseapp.com",
-  	  projectId: "new-year-gacha2026",
- 	  storageBucket: "new-year-gacha2026.firebasestorage.app",
- 	  messagingSenderId: "408334293588",
- 	  appId: "1:408334293588:web:9ece70d67883fc94812bc1"
-	};
+            apiKey: "AIzaSyCi33rhnvJCGlIWXsesPk4dFNDLAf2w8cQ",
+            authDomain: "new-year-gacha2026.firebaseapp.com",
+            projectId: "new-year-gacha2026",
+            storageBucket: "new-year-gacha2026.firebasestorage.app",
+            messagingSenderId: "408334293588",
+            appId: "1:408334293588:web:9ece70d67883fc94812bc1"
+        };
 
         // 2. 学校ドメイン設定（空文字なら制限なし）
         const ALLOWED_DOMAIN = "gl.pen-kanagawa.ed.jp"; 
 
-        // 3. 管理者メールアドレス（ここに先生のアドレスを入れてください）
-        // このアドレスでログインした時だけ、結果一覧ボタンが表示されます
+        // 3. 管理者メールアドレス
         const ADMIN_EMAIL = "kina-qy8@gl.pen-kanagawa.ed.jp"; 
 
         // Firebase初期化
@@ -364,6 +370,8 @@
         const spinningGarapon = document.getElementById('spinningGarapon');
         const animatingBall = document.getElementById('animatingBall');
         const animatingText = document.getElementById('animatingText');
+        const adminTestMsg = document.getElementById('adminTestMsg');
+        const adminRetryBtn = document.getElementById('adminRetryBtn');
         
         // 管理者用DOM
         const adminArea = document.getElementById('adminArea');
@@ -403,15 +411,27 @@
                 // 管理者チェック
                 if (user.email === ADMIN_EMAIL) {
                     adminArea.classList.remove('hidden');
+                    adminTestMsg.classList.remove('hidden');
+                    adminRetryBtn.classList.remove('hidden');
+                } else {
+                    adminTestMsg.classList.add('hidden');
+                    adminRetryBtn.classList.add('hidden');
                 }
-                await checkUserStatus(user.uid);
+                // 引数にEmailを追加
+                await checkUserStatus(user.uid, user.email);
             } else {
                 showView('login');
                 adminArea.classList.add('hidden');
             }
         });
 
-        async function checkUserStatus(uid) {
+        async function checkUserStatus(uid, email) {
+            // ★★★ 管理者はDBチェックをスキップして常にガチャ画面へ ★★★
+            if (email === ADMIN_EMAIL) {
+                showView('gacha');
+                return;
+            }
+
             try {
                 const userDocRef = doc(db, "results", uid);
                 const docSnap = await getDoc(userDocRef);
@@ -429,6 +449,16 @@
 
         // ガチャ実行
         drawBtn.addEventListener('click', async () => {
+            await runGachaSequence();
+        });
+
+        // 管理者用リプレイボタン
+        adminRetryBtn.addEventListener('click', () => {
+            showView('gacha');
+        });
+
+        // ガチャの一連の流れ
+        async function runGachaSequence() {
             const user = auth.currentUser;
             if (!user) return;
 
@@ -440,7 +470,8 @@
             let resultKey = null;
             try {
                 const delayPromise = new Promise(resolve => setTimeout(resolve, 2000));
-                const lotteryPromise = executeLottery(user.uid, user.email); // emailも保存するように修正
+                // Emailも渡す
+                const lotteryPromise = executeLottery(user.uid, user.email); 
                 const values = await Promise.all([lotteryPromise, delayPromise]);
                 resultKey = values[0];
             } catch (error) {
@@ -468,7 +499,7 @@
                     displayResult(resultKey, false);
                 }, 500);
             }, 600);
-        });
+        }
 
         // 抽選ロジック（トランザクション）
         async function executeLottery(uid, email) {
@@ -483,6 +514,30 @@
             };
             const TOTAL_STUDENTS = 39;
 
+            // ★★★ 管理者の特別処理（書き込みなし・在庫減らさない） ★★★
+            if (email === ADMIN_EMAIL) {
+                // 現在の在庫を確認するだけ（書き込まない）
+                const statsSnap = await getDoc(statsRef);
+                let currentStats = { grand: 0, win: 0, total: 0 };
+                if (statsSnap.exists()) currentStats = statsSnap.data();
+
+                const remainingGrand = PRIZES.GRAND.count - (currentStats.grand || 0);
+                const remainingWin = PRIZES.WIN.count - (currentStats.win || 0);
+                const playedCount = currentStats.total || 0;
+                const remainingMiss = (TOTAL_STUDENTS - playedCount) - remainingGrand - remainingWin;
+
+                let pool = [];
+                for (let i = 0; i < remainingGrand; i++) pool.push("GRAND");
+                for (let i = 0; i < remainingWin; i++) pool.push("WIN");
+                for (let i = 0; i < Math.max(0, remainingMiss); i++) pool.push("MISS");
+                // プールが空の場合はMISSを入れる（安全策）
+                if (pool.length === 0) pool.push("MISS");
+
+                // 在庫を減らさずに結果だけ返す
+                return pool[Math.floor(Math.random() * pool.length)];
+            }
+
+            // 通常ユーザーの処理（トランザクション使用・在庫減らす・記録する）
             return await runTransaction(db, async (transaction) => {
                 const userDoc = await transaction.get(resultRef);
                 if (userDoc.exists()) throw "Already played";
@@ -494,16 +549,14 @@
                 const remainingGrand = PRIZES.GRAND.count - (currentStats.grand || 0);
                 const remainingWin = PRIZES.WIN.count - (currentStats.win || 0);
                 const playedCount = currentStats.total || 0;
-                // 残りはずれ数 = (全39人 - 引いた人数) - (残り大当たり + 残り当たり)
+                
                 const remainingMiss = (TOTAL_STUDENTS - playedCount) - remainingGrand - remainingWin;
 
                 let pool = [];
                 for (let i = 0; i < remainingGrand; i++) pool.push("GRAND");
                 for (let i = 0; i < remainingWin; i++) pool.push("WIN");
-                // 安全のため0未満にならないようにMath.maxを使用
                 for (let i = 0; i < Math.max(0, remainingMiss); i++) pool.push("MISS");
 
-                // 万が一プールが空（39人超えなどの例外）なら MISS を入れる
                 if (pool.length === 0) pool.push("MISS");
 
                 const selectedKey = pool[Math.floor(Math.random() * pool.length)];
@@ -514,7 +567,7 @@
                     win: (currentStats.win || 0) + (selectedKey === "WIN" ? 1 : 0)
                 };
 
-                // 結果には日時とメールアドレス（管理者確認用）も保存
+                // 結果には日時とメールアドレスも保存
                 transaction.set(resultRef, { 
                     rank: selectedKey, 
                     email: email,
@@ -602,7 +655,6 @@
         downloadCsvBtn.addEventListener('click', () => {
             if (allResultsData.length === 0) return alert("データがありません");
 
-            // BOM付きCSVを作成（Excelでの文字化け防止）
             const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
             let csvContent = "日時,結果,メールアドレス\n";
 
