@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2025年 新春運試し</title>
+    <title>2026年 新春運試し</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts -->
@@ -175,7 +175,7 @@
                 </div>
             </div>
             <h1 class="text-4xl md:text-5xl japanese-font font-bold mb-2 text-red-700 drop-shadow-sm">新春運試し</h1>
-            <p class="text-lg font-bold text-amber-800">2025年もよろしくお願いします</p>
+            <p class="text-lg font-bold text-amber-800">2026年もよろしくお願いします</p>
             <div class="mt-2 h-1 w-24 bg-red-600 mx-auto rounded"></div>
         </div>
 
@@ -294,45 +294,53 @@
 
     <!-- 管理者用モーダル -->
     <div id="adminModal" class="hidden fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
-        <div class="bg-white w-full max-w-2xl max-h-[80vh] rounded-xl shadow-2xl flex flex-col">
+        <div class="bg-white w-full max-w-3xl max-h-[85vh] rounded-xl shadow-2xl flex flex-col">
             <div class="p-4 border-b flex justify-between items-center bg-gray-50">
-                <h3 class="font-bold text-lg"><i class="fas fa-list"></i> 抽選結果一覧</h3>
+                <h3 class="font-bold text-lg"><i class="fas fa-list"></i> 抽選結果管理</h3>
                 <button id="closeAdminBtn" class="text-gray-500 hover:text-red-500 text-2xl">&times;</button>
             </div>
             <div class="p-4 flex-1 overflow-y-auto">
-                <div class="flex justify-between items-center mb-4">
-                    <div id="statsSummary" class="text-sm text-gray-600">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+                    <div id="statsSummary" class="text-sm text-gray-600 font-bold">
                         <!-- 集計表示 -->
                     </div>
-                    <button id="downloadCsvBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm font-bold">
-                        <i class="fas fa-file-csv"></i> CSVダウンロード
-                    </button>
+                    <div class="flex gap-2">
+                        <button id="resetAllBtn" class="bg-red-600 text-white px-3 py-2 rounded hover:bg-red-700 text-sm font-bold shadow-sm">
+                            <i class="fas fa-trash-alt"></i> データ初期化
+                        </button>
+                        <button id="downloadCsvBtn" class="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 text-sm font-bold shadow-sm">
+                            <i class="fas fa-file-csv"></i> CSV
+                        </button>
+                    </div>
                 </div>
-                <table class="w-full text-sm text-left border-collapse">
-                    <thead class="bg-gray-100 text-gray-700">
-                        <tr>
-                            <th class="p-2 border">日時</th>
-                            <th class="p-2 border">結果</th>
-                            <th class="p-2 border">ユーザーID</th>
-                        </tr>
-                    </thead>
-                    <tbody id="resultsTableBody">
-                        <!-- 結果行 -->
-                    </tbody>
-                </table>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left border-collapse min-w-[500px]">
+                        <thead class="bg-gray-100 text-gray-700">
+                            <tr>
+                                <th class="p-2 border w-32">日時</th>
+                                <th class="p-2 border w-24">結果</th>
+                                <th class="p-2 border">ユーザーID/Email</th>
+                                <th class="p-2 border w-20 text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsTableBody">
+                            <!-- 結果行 -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 
     <footer class="mt-4 mb-8 text-center text-amber-900/60 text-sm">
-        <p>&copy; 2025 新春運試し</p>
+        <p>&copy; 2026 新春運試し</p>
     </footer>
 
     <!-- Firebase SDK Setup -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
         import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, runTransaction, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, runTransaction, collection, getDocs, writeBatch, deleteDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
 
         // ★★★ 設定エリア ★★★
         const firebaseConfig = {
@@ -381,6 +389,7 @@
         const resultsTableBody = document.getElementById('resultsTableBody');
         const statsSummary = document.getElementById('statsSummary');
         const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+        const resetAllBtn = document.getElementById('resetAllBtn');
 
         // 画面切り替え
         function showView(viewName) {
@@ -417,7 +426,6 @@
                     adminTestMsg.classList.add('hidden');
                     adminRetryBtn.classList.add('hidden');
                 }
-                // 引数にEmailを追加
                 await checkUserStatus(user.uid, user.email);
             } else {
                 showView('login');
@@ -470,7 +478,6 @@
             let resultKey = null;
             try {
                 const delayPromise = new Promise(resolve => setTimeout(resolve, 2000));
-                // Emailも渡す
                 const lotteryPromise = executeLottery(user.uid, user.email); 
                 const values = await Promise.all([lotteryPromise, delayPromise]);
                 resultKey = values[0];
@@ -516,7 +523,6 @@
 
             // ★★★ 管理者の特別処理（書き込みなし・在庫減らさない） ★★★
             if (email === ADMIN_EMAIL) {
-                // 現在の在庫を確認するだけ（書き込まない）
                 const statsSnap = await getDoc(statsRef);
                 let currentStats = { grand: 0, win: 0, total: 0 };
                 if (statsSnap.exists()) currentStats = statsSnap.data();
@@ -530,14 +536,12 @@
                 for (let i = 0; i < remainingGrand; i++) pool.push("GRAND");
                 for (let i = 0; i < remainingWin; i++) pool.push("WIN");
                 for (let i = 0; i < Math.max(0, remainingMiss); i++) pool.push("MISS");
-                // プールが空の場合はMISSを入れる（安全策）
                 if (pool.length === 0) pool.push("MISS");
 
-                // 在庫を減らさずに結果だけ返す
                 return pool[Math.floor(Math.random() * pool.length)];
             }
 
-            // 通常ユーザーの処理（トランザクション使用・在庫減らす・記録する）
+            // 通常ユーザーの処理
             return await runTransaction(db, async (transaction) => {
                 const userDoc = await transaction.get(resultRef);
                 if (userDoc.exists()) throw "Already played";
@@ -549,14 +553,12 @@
                 const remainingGrand = PRIZES.GRAND.count - (currentStats.grand || 0);
                 const remainingWin = PRIZES.WIN.count - (currentStats.win || 0);
                 const playedCount = currentStats.total || 0;
-                
                 const remainingMiss = (TOTAL_STUDENTS - playedCount) - remainingGrand - remainingWin;
 
                 let pool = [];
                 for (let i = 0; i < remainingGrand; i++) pool.push("GRAND");
                 for (let i = 0; i < remainingWin; i++) pool.push("WIN");
                 for (let i = 0; i < Math.max(0, remainingMiss); i++) pool.push("MISS");
-
                 if (pool.length === 0) pool.push("MISS");
 
                 const selectedKey = pool[Math.floor(Math.random() * pool.length)];
@@ -567,7 +569,6 @@
                     win: (currentStats.win || 0) + (selectedKey === "WIN" ? 1 : 0)
                 };
 
-                // 結果には日時とメールアドレスも保存
                 transaction.set(resultRef, { 
                     rank: selectedKey, 
                     email: email,
@@ -613,7 +614,7 @@
         // 全データの読み込みと表示
         let allResultsData = [];
         async function loadAllResults() {
-            resultsTableBody.innerHTML = '<tr><td colspan="3" class="p-4 text-center">読み込み中...</td></tr>';
+            resultsTableBody.innerHTML = '<tr><td colspan="4" class="p-4 text-center">読み込み中...</td></tr>';
             try {
                 const querySnapshot = await getDocs(collection(db, "results"));
                 allResultsData = [];
@@ -621,7 +622,8 @@
 
                 querySnapshot.forEach((doc) => {
                     const data = doc.data();
-                    allResultsData.push(data);
+                    // IDをデータに含める（削除用）
+                    allResultsData.push({ ...data, id: doc.id });
                     if (counts[data.rank] !== undefined) counts[data.rank]++;
                 });
 
@@ -636,20 +638,105 @@
                 allResultsData.forEach(data => {
                     const date = new Date(data.timestamp).toLocaleString('ja-JP');
                     const rankName = PRIZE_DATA[data.rank]?.name || data.rank;
-                    const row = `
-                        <tr class="border-b hover:bg-gray-50">
-                            <td class="p-2">${date}</td>
-                            <td class="p-2 font-bold ${data.rank === 'GRAND' ? 'text-yellow-600' : (data.rank === 'WIN' ? 'text-red-600' : 'text-gray-600')}">${rankName}</td>
-                            <td class="p-2 text-xs text-gray-500 break-all">${data.email || 'unknown'}</td>
-                        </tr>
+                    const row = document.createElement('tr');
+                    row.className = "border-b hover:bg-gray-50";
+                    row.innerHTML = `
+                        <td class="p-2">${date}</td>
+                        <td class="p-2 font-bold ${data.rank === 'GRAND' ? 'text-yellow-600' : (data.rank === 'WIN' ? 'text-red-600' : 'text-gray-600')}">${rankName}</td>
+                        <td class="p-2 text-xs text-gray-500 break-all">${data.email || 'unknown'}</td>
+                        <td class="p-2 text-center">
+                            <button class="delete-btn text-red-500 hover:bg-red-100 p-2 rounded transition-colors" data-id="${data.id}" data-rank="${data.rank}">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </td>
                     `;
-                    resultsTableBody.insertAdjacentHTML('beforeend', row);
+                    resultsTableBody.appendChild(row);
                 });
+
+                // 削除ボタンのイベント設定
+                document.querySelectorAll('.delete-btn').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const uid = e.currentTarget.dataset.id;
+                        const rank = e.currentTarget.dataset.rank;
+                        if(confirm('本当にこの結果を削除しますか？\n（くじの在庫は元に戻ります）')) {
+                            await deleteSingleResult(uid, rank);
+                        }
+                    });
+                });
+
             } catch (error) {
                 console.error("Admin Load Error:", error);
-                resultsTableBody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-red-500">読み込みエラー</td></tr>';
+                resultsTableBody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">読み込みエラー</td></tr>';
             }
         }
+
+        // 個別削除ロジック（トランザクションで在庫を戻す）
+        async function deleteSingleResult(uid, rank) {
+            const resultRef = doc(db, "results", uid);
+            const statsRef = doc(db, "config", "stats");
+
+            try {
+                await runTransaction(db, async (transaction) => {
+                    // ドキュメントが存在するか確認
+                    const docSnap = await transaction.get(resultRef);
+                    if (!docSnap.exists()) {
+                        throw "Document does not exist!";
+                    }
+
+                    // 統計情報の更新（マイナスする）
+                    let statsDoc = await transaction.get(statsRef);
+                    let currentStats = { grand: 0, win: 0, total: 0 };
+                    if (statsDoc.exists()) currentStats = statsDoc.data();
+
+                    const newStats = {
+                        total: Math.max(0, (currentStats.total || 0) - 1),
+                        grand: Math.max(0, (currentStats.grand || 0) - (rank === "GRAND" ? 1 : 0)),
+                        win: Math.max(0, (currentStats.win || 0) - (rank === "WIN" ? 1 : 0))
+                    };
+
+                    transaction.delete(resultRef);
+                    transaction.set(statsRef, newStats, { merge: true });
+                });
+
+                alert("削除しました");
+                await loadAllResults(); // 再読み込み
+
+            } catch (error) {
+                console.error("Delete Error:", error);
+                alert("削除に失敗しました: " + error);
+            }
+        }
+
+        // 全データリセット機能
+        resetAllBtn.addEventListener('click', async () => {
+            if (!confirm("【警告】本当に全てのデータを初期化しますか？\n全ての抽選結果が消去され、くじの在庫がリセットされます。\nこの操作は取り消せません。")) {
+                return;
+            }
+
+            const statsRef = doc(db, "config", "stats");
+            const batch = writeBatch(db);
+
+            try {
+                // 1. 全ての結果ドキュメントを削除対象にする
+                const querySnapshot = await getDocs(collection(db, "results"));
+                querySnapshot.forEach((doc) => {
+                    batch.delete(doc.ref);
+                });
+
+                // 2. 統計情報を0にリセット
+                batch.set(statsRef, { grand: 0, win: 0, total: 0 });
+
+                // 3. 実行
+                await batch.commit();
+
+                alert("全てのデータをリセットしました。");
+                await loadAllResults();
+
+            } catch (error) {
+                console.error("Reset Error:", error);
+                alert("リセットに失敗しました: " + error);
+            }
+        });
 
         // CSVダウンロード処理
         downloadCsvBtn.addEventListener('click', () => {
